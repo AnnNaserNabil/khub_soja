@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --protocol http2 run
+    volumes:
+      - ./cloudflared:/etc/cloudflared
+    networks:
+      - internal
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    environment:
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
+      - N8N_HOST=${SUBDOMAIN_N8N}.${DOMAIN_NAME}
+      - WEBHOOK_URL=https://${SUBDOMAIN_N8N}.${DOMAIN_NAME}/
+    volumes:
+      - ./n8n_data:/home/node/.n8n
+    networks:
+      - internal
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    command: -H unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./portainer_data:/data
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge

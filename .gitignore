@@ -1,0 +1,10 @@
+# Sensitive data
+.env
+
+# Large data directories
+n8n_data/
+portainer_data/
+cloudflared/
+
+# Miscellaneous
+.directory
