@@ -5,9 +5,32 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: cloudflared
     restart: unless-stopped
-    command: tunnel --no-autoupdate --protocol http2 run
+    command: tunnel --no-autoupdate run
     volumes:
       - ./cloudflared:/etc/cloudflared
+    networks:
+      - internal
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - ./redis_data:/data
     networks:
       - internal
 
@@ -20,8 +43,49 @@ services:
       - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
       - N8N_HOST=${SUBDOMAIN_N8N}.${DOMAIN_NAME}
       - WEBHOOK_URL=https://${SUBDOMAIN_N8N}.${DOMAIN_NAME}/
+      # PostgreSQL
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      # Redis Queue
+      - EXECUTIONS_MODE=queue
+      - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_BULL_REDIS_PORT=6379
+      - QUEUE_WORKER_CONCURRENCY=5
     volumes:
       - ./n8n_data:/home/node/.n8n
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - internal
+
+  n8n-worker:
+    image: n8nio/n8n:latest
+    container_name: n8n-worker
+    restart: unless-stopped
+    command: worker
+    environment:
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY} # must match n8n
+      # PostgreSQL
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      # Redis Queue
+      - EXECUTIONS_MODE=queue
+      - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_BULL_REDIS_PORT=6379
+      - QUEUE_WORKER_CONCURRENCY=5
+    depends_on:
+      - postgres
+      - redis
+      - n8n
     networks:
       - internal
 
@@ -33,6 +97,24 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./portainer_data:/data
+    networks:
+      - internal
+
+  code-server:
+    image: my-code-server:latest
+    container_name: code-server
+    restart: unless-stopped
+    environment:
+      - PASSWORD=${CODE_SERVER_PASSWORD:-qwen2024}
+    volumes:
+      - /usr/bin/qwen:/usr/bin/qwen:ro
+      - /home/magus/.qwen:/home/coder/.qwen
+      - /mnt/data/wd:/home/coder/projects
+      - ./code-server-data:/home/coder/.local
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+      - net.ipv6.conf.lo.disable_ipv6=1
     networks:
       - internal
 

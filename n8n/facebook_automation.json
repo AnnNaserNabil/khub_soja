@@ -1,0 +1,411 @@
+{
+    "name": "Refined Facebook AI Assistant",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "facebook-webhook",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "id": "webhook-node",
+            "name": "Listen for Facebook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                0,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict"
+                    },
+                    "conditions": [
+                        {
+                            "id": "067645f5-e2d4-47c1-8b01-9a7da62bc815",
+                            "leftValue": "={{ $json.query['hub.mode'] }}",
+                            "rightValue": "subscribe",
+                            "operator": {
+                                "type": "string",
+                                "operation": "equals"
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "id": "is-verify-node",
+            "name": "Is Verification?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                250,
+                0
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "return {\n  body: $input.item.json.query['hub.challenge'],\n  statusCode: 200\n};"
+            },
+            "id": "verify-code-node",
+            "name": "Handle Verification",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                500,
+                -100
+            ]
+        },
+        {
+            "parameters": {
+                "respondWith": "text",
+                "responseBody": "={{ $json.body }}",
+                "options": {
+                    "responseCode": 200
+                }
+            },
+            "id": "respond-node",
+            "name": "Confirm Verification",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1,
+            "position": [
+                750,
+                -100
+            ]
+        },
+        {
+            "parameters": {
+                "fields": {
+                    "values": [
+                        {
+                            "name": "entry",
+                            "stringValue": "={{ $json.body.entry[0] }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "extract-node",
+            "name": "Extract Payload",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3,
+            "position": [
+                500,
+                150
+            ]
+        },
+        {
+            "parameters": {
+                "rules": {
+                    "rules": [
+                        {
+                            "value2": "messenger"
+                        },
+                        {
+                            "value2": "comment"
+                        }
+                    ]
+                },
+                "value1": "={{ $json.entry.messaging ? 'messenger' : ($json.entry.changes[0].field === 'feed' ? 'comment' : 'unknown') }}"
+            },
+            "id": "router-node",
+            "name": "Event Type Router",
+            "type": "n8n-nodes-base.switch",
+            "typeVersion": 1,
+            "position": [
+                750,
+                150
+            ]
+        },
+        {
+            "parameters": {
+                "fields": {
+                    "values": [
+                        {
+                            "name": "sender_id",
+                            "stringValue": "={{ $json.entry.messaging[0].sender.id }}"
+                        },
+                        {
+                            "name": "message_text",
+                            "stringValue": "={{ $json.entry.messaging[0].message.text }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "msgr-set-node",
+            "name": "Messenger Extractor",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3,
+            "position": [
+                1000,
+                50
+            ]
+        },
+        {
+            "parameters": {
+                "fields": {
+                    "values": [
+                        {
+                            "name": "comment_id",
+                            "stringValue": "={{ $json.entry.changes[0].value.comment_id }}"
+                        },
+                        {
+                            "name": "comment_text",
+                            "stringValue": "={{ $json.entry.changes[0].value.message }}"
+                        },
+                        {
+                            "name": "sender_name",
+                            "stringValue": "={{ $json.entry.changes[0].value.from.name }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "cmnt-set-node",
+            "name": "Comment Extractor",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3,
+            "position": [
+                1000,
+                250
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "contents",
+                            "value": "={{ [ { \"parts\": [ { \"text\": \"Reply to this FB Messenger message: \" + $json.message_text } ] } ] }}"
+                        }
+                    ]
+                },
+                "queryParameters": {
+                    "parameters": [
+                        {
+                            "name": "key",
+                            "value": "YOUR_GEMINI_API_KEY"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "gemini-msgr",
+            "name": "Gemini Messenger",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                1250,
+                50
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
+                "sendBody": true,
+                "bodyParameters": {
+                    "parameters": [
+                        {
+                            "name": "contents",
+                            "value": "={{ [ { \"parts\": [ { \"text\": \"Reply to this FB comment from \" + $json.sender_name + \": \" + $json.comment_text } ] } ] }}"
+                        }
+                    ]
+                },
+                "queryParameters": {
+                    "parameters": [
+                        {
+                            "name": "key",
+                            "value": "YOUR_GEMINI_API_KEY"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "gemini-cmnt",
+            "name": "Gemini Comment",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                1250,
+                250
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "send",
+                "recipientId": "={{ $node[\"Messenger Extractor\"].json.sender_id }}",
+                "message": "={{ $json.candidates[0].content.parts[0].text }}",
+                "messageType": "RESPONSE"
+            },
+            "id": "msgr-send-node",
+            "name": "Send Messenger Response",
+            "type": "n8n-nodes-base.facebookMessenger",
+            "typeVersion": 1,
+            "position": [
+                1500,
+                50
+            ],
+            "credentials": {
+                "facebookMessengerApi": {
+                    "id": "YOUR_MSGR_CREDENTIAL",
+                    "name": "Facebook Messenger Account"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "resource": "pageComment",
+                "operation": "create",
+                "commentId": "={{ $node[\"Comment Extractor\"].json.comment_id }}",
+                "message": "={{ $json.candidates[0].content.parts[0].text }}",
+                "options": {}
+            },
+            "id": "cmnt-send-node",
+            "name": "Post Comment Response",
+            "type": "n8n-nodes-base.facebookGraphApi",
+            "typeVersion": 1,
+            "position": [
+                1500,
+                250
+            ],
+            "credentials": {
+                "facebookGraphApi": {
+                    "id": "YOUR_GRAPH_CREDENTIAL",
+                    "name": "Facebook Graph API Account"
+                }
+            }
+        }
+    ],
+    "connections": {
+        "Listen for Facebook": {
+            "main": [
+                [
+                    {
+                        "node": "Is Verification?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Is Verification?": {
+            "main": [
+                [
+                    {
+                        "node": "Handle Verification",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Extract Payload",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Handle Verification": {
+            "main": [
+                [
+                    {
+                        "node": "Confirm Verification",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extract Payload": {
+            "main": [
+                [
+                    {
+                        "node": "Event Type Router",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Event Type Router": {
+            "main": [
+                [
+                    {
+                        "node": "Messenger Extractor",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Comment Extractor",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Messenger Extractor": {
+            "main": [
+                [
+                    {
+                        "node": "Gemini Messenger",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Comment Extractor": {
+            "main": [
+                [
+                    {
+                        "node": "Gemini Comment",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Gemini Messenger": {
+            "main": [
+                [
+                    {
+                        "node": "Send Messenger Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Gemini Comment": {
+            "main": [
+                [
+                    {
+                        "node": "Post Comment Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "meta": {
+        "templateCredsSetupCompleted": true
+    }
+}

@@ -1,0 +1,273 @@
+{
+  "name": "B2B Email Reply Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": 10,
+        "simple": false,
+        "filters": {
+          "labelIds": [
+            "INBOX"
+          ]
+        }
+      },
+      "id": "gmail_trigger",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 1,
+      "position": [
+        200,
+        300
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL",
+          "name": "Gmail Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "email_body",
+              "value": "={{$json.snippet}}"
+            },
+            {
+              "name": "sender",
+              "value": "={{$json.from}}"
+            },
+            {
+              "name": "threadId",
+              "value": "={{$json.threadId}}"
+            }
+          ]
+        }
+      },
+      "id": "extract_data",
+      "name": "Extract Email Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        400,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
+        "authentication": "none",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "contents",
+              "value": "={{[{\"parts\":[{\"text\":\"Classify this email reply into positive_interest, not_interested, or neutral: \" + $json.email_body}]}]}}"
+            }
+          ]
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "YOUR_GEMINI_API_KEY"
+            }
+          ]
+        }
+      },
+      "id": "ai_classifier",
+      "name": "Gemini Intent Classifier",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        600,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.intent}}",
+              "operation": "equal",
+              "value2": "positive_interest"
+            }
+          ]
+        }
+      },
+      "id": "if_positive",
+      "name": "IF Positive Interest",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        800,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "to": "={{$json.sender}}",
+        "subject": "Thanks for your interest",
+        "message": "Hi,\n\nThanks for your reply. We'd love to schedule a quick call to understand your needs and show how we can help.\n\nWould you be available sometime this week?\n\nBest,\nSales Team"
+      },
+      "id": "send_reply",
+      "name": "Send Positive Reply",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        200
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL",
+          "name": "Gmail Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.intent}}",
+              "operation": "equal",
+              "value2": "not_interested"
+            }
+          ]
+        }
+      },
+      "id": "if_negative",
+      "name": "IF Not Interested",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        800,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "sheetId": "YOUR_SHEET_ID",
+        "range": "Sheet1!A:C",
+        "options": {}
+      },
+      "id": "add_to_sheet",
+      "name": "Add to Suppression List",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        1000,
+        450
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEET_CREDENTIAL",
+          "name": "Google Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabel",
+        "messageId": "={{$json.id}}",
+        "labelIds": [
+          "NeedsReview"
+        ]
+      },
+      "id": "label_review",
+      "name": "Label for Manual Review",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        600
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL",
+          "name": "Gmail Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Email Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Email Data": {
+      "main": [
+        [
+          {
+            "node": "Gemini Intent Classifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Intent Classifier": {
+      "main": [
+        [
+          {
+            "node": "IF Positive Interest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Positive Interest": {
+      "main": [
+        [
+          {
+            "node": "Send Positive Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF Not Interested",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Not Interested": {
+      "main": [
+        [
+          {
+            "node": "Add to Suppression List",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Label for Manual Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
